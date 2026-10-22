@@ -3,15 +3,18 @@
   "id": "continuity",
   "version": "${version}",
 
-  "name": "Continuity",
-  "description": "Continuity is a Minecraft mod that allows resource packs that use the OptiFine connected textures format or OptiFine emissive textures format (only for blocks and item models) to work without OptiFine.",
+  "name": "Continuity Expanded",
+  "description": "A fork of Continuity by PepperCode1 that replaces it. Adds overlays that fit slabs, layers and other shapes, block tags in matchBlocks and connectBlocks, and more. Continuity allows resource packs that use the OptiFine connected textures format or OptiFine emissive textures format (only for blocks and item models) to work without OptiFine.",
   "authors": [
     "PepperCode1"
   ],
+  "contributors": [
+    "HIPPOKLEIDES"
+  ],
   "contact": {
-    "homepage": "https://modrinth.com/mod/continuity",
-    "issues": "https://github.com/PepperCode1/Continuity/issues",
-    "sources": "https://github.com/PepperCode1/Continuity"
+    "homepage": "https://github.com/HIPPOKLEIDES/Continuity",
+    "issues": "https://github.com/HIPPOKLEIDES/Continuity/issues",
+    "sources": "https://github.com/HIPPOKLEIDES/Continuity"
   },
 
   "license": "LGPL-3.0-only",
@@ -39,13 +42,5 @@
   },
   "breaks": {
     "sodium": "<0.8.9"
-  },
-
-  "custom": {
-    "modmenu": {
-      "links": {
-        "modmenu.discord": "https://discord.gg/7rnTYXu"
-      }
-    }
   }
 }

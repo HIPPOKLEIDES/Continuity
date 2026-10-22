@@ -3,7 +3,7 @@ plugins {
 	id 'maven-publish'
 }
 
-version = project.mod_version + '+' + project.mod_minecraft_version + getExtraBuildMetadata()
+version = project.mod_version + '+' + project.mod_minecraft_version + '-expanded.' + project.expanded_version + getExtraBuildMetadata()
 group = project.maven_group
 
 base {
