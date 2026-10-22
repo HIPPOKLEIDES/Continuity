@@ -1,11 +1,15 @@
 package me.pepperbell.continuity.client.properties;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
 
@@ -25,7 +29,9 @@ import me.pepperbell.continuity.client.processor.Symmetry;
 import me.pepperbell.continuity.client.resource.ResourceRedirectHandler;
 import net.minecraft.IdentifierException;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
@@ -121,11 +127,20 @@ public final class PropertiesParsingHelper {
 		if (blockStateStrs.length != 0) {
 			ReferenceOpenHashSet<Block> blockSet = new ReferenceOpenHashSet<>();
 			Reference2ObjectOpenHashMap<Block, Object2ObjectOpenHashMap<Property<?>, ObjectOpenHashSet<Comparable<?>>>> propertyMaps = new Reference2ObjectOpenHashMap<>();
+			List<Predicate<BlockState>> tagPredicates = new ArrayList<>();
 
 			Block:
 			for (int i = 0; i < blockStateStrs.length; i++) {
 				String blockStateStr = blockStateStrs[i].trim();
 				if (blockStateStr.isEmpty()) {
+					continue;
+				}
+
+				if (blockStateStr.startsWith("#")) {
+					Predicate<BlockState> tagPredicate = parseBlockTag(blockStateStr, i, propertyKey, fileLocation, packId);
+					if (tagPredicate != null) {
+						tagPredicates.add(tagPredicate);
+					}
 					continue;
 				}
 
@@ -217,48 +232,151 @@ public final class PropertiesParsingHelper {
 				}
 			}
 
-			if (!blockSet.isEmpty() || !propertyMaps.isEmpty()) {
-				if (propertyMaps.isEmpty()) {
-					if (blockSet.size() == 1) {
-						Block block = blockSet.toArray(Block[]::new)[0];
-						return state -> state.getBlock() == block;
-					} else {
-						blockSet.trim();
-						return state -> blockSet.contains(state.getBlock());
-					}
+			Predicate<BlockState> blockPredicate = createBlockPredicate(blockSet, propertyMaps);
+			if (!tagPredicates.isEmpty()) {
+				Predicate<BlockState> tagPredicate;
+				if (tagPredicates.size() == 1) {
+					tagPredicate = tagPredicates.get(0);
 				} else {
-					Reference2ReferenceOpenHashMap<Block, Predicate<BlockState>> predicateMap = new Reference2ReferenceOpenHashMap<>();
-					blockSet.forEach(block -> {
-						predicateMap.put(block, state -> true);
-					});
-					propertyMaps.forEach((block, propertyMap) -> {
-						Map.Entry<Property<?>, ObjectOpenHashSet<Comparable<?>>>[] entryArray = propertyMap.entrySet().toArray((IntFunction<Map.Entry<Property<?>, ObjectOpenHashSet<Comparable<?>>>[]>) Map.Entry[]::new);
-						for (Map.Entry<Property<?>, ObjectOpenHashSet<Comparable<?>>> entry : entryArray) {
-							entry.getValue().trim();
-						}
-
-						predicateMap.put(block, state -> {
-							StateHolderAccessor<Block, BlockState> accessor = ((StateHolderAccessor<Block, BlockState>) state);
-							for (Map.Entry<Property<?>, ObjectOpenHashSet<Comparable<?>>> entry : entryArray) {
-								Comparable<?> targetValue = accessor.continuity$getNullableValue(entry.getKey());
-								if (targetValue != null) {
-									if (!entry.getValue().contains(targetValue)) {
-										return false;
-									}
-								}
+					Predicate<BlockState>[] tagPredicateArray = tagPredicates.toArray((IntFunction<Predicate<BlockState>[]>) Predicate[]::new);
+					tagPredicate = state -> {
+						for (Predicate<BlockState> predicate : tagPredicateArray) {
+							if (predicate.test(state)) {
+								return true;
 							}
-							return true;
-						});
-					});
-
-					return state -> {
-						Predicate<BlockState> predicate = predicateMap.get(state.getBlock());
-						return predicate != null && predicate.test(state);
+						}
+						return false;
 					};
 				}
+
+				if (blockPredicate == null) {
+					return tagPredicate;
+				}
+				return state -> blockPredicate.test(state) || tagPredicate.test(state);
+			}
+			if (blockPredicate != null) {
+				return blockPredicate;
 			}
 		}
 		return EMPTY_BLOCK_STATE_PREDICATE;
+	}
+
+	@Nullable
+	private static Predicate<BlockState> createBlockPredicate(ReferenceOpenHashSet<Block> blockSet, Reference2ObjectOpenHashMap<Block, Object2ObjectOpenHashMap<Property<?>, ObjectOpenHashSet<Comparable<?>>>> propertyMaps) {
+		if (blockSet.isEmpty() && propertyMaps.isEmpty()) {
+			return null;
+		}
+
+		if (propertyMaps.isEmpty()) {
+			if (blockSet.size() == 1) {
+				Block block = blockSet.toArray(Block[]::new)[0];
+				return state -> state.getBlock() == block;
+			} else {
+				blockSet.trim();
+				return state -> blockSet.contains(state.getBlock());
+			}
+		} else {
+			Reference2ReferenceOpenHashMap<Block, Predicate<BlockState>> predicateMap = new Reference2ReferenceOpenHashMap<>();
+			blockSet.forEach(block -> {
+				predicateMap.put(block, state -> true);
+			});
+			propertyMaps.forEach((block, propertyMap) -> {
+				Map.Entry<Property<?>, ObjectOpenHashSet<Comparable<?>>>[] entryArray = propertyMap.entrySet().toArray((IntFunction<Map.Entry<Property<?>, ObjectOpenHashSet<Comparable<?>>>[]>) Map.Entry[]::new);
+				for (Map.Entry<Property<?>, ObjectOpenHashSet<Comparable<?>>> entry : entryArray) {
+					entry.getValue().trim();
+				}
+
+				predicateMap.put(block, state -> {
+					StateHolderAccessor<Block, BlockState> accessor = ((StateHolderAccessor<Block, BlockState>) state);
+					for (Map.Entry<Property<?>, ObjectOpenHashSet<Comparable<?>>> entry : entryArray) {
+						Comparable<?> targetValue = accessor.continuity$getNullableValue(entry.getKey());
+						if (targetValue != null) {
+							if (!entry.getValue().contains(targetValue)) {
+								return false;
+							}
+						}
+					}
+					return true;
+				});
+			});
+
+			return state -> {
+				Predicate<BlockState> predicate = predicateMap.get(state.getBlock());
+				return predicate != null && predicate.test(state);
+			};
+		}
+	}
+
+	/**
+	 * Parses a block tag element such as {@code #minecraft:slabs} or {@code #minecraft:slabs:type=bottom,double}. Like
+	 * a block element, the namespace defaults to {@code minecraft} and property filters follow the id. Tags are only
+	 * readable once a world is loaded, so a block's membership in the tag is checked when the predicate is tested. Property filters are
+	 * resolved the first time each block in the tag is tested, and a block without a filtered property does not match.
+	 */
+	@Nullable
+	private static Predicate<BlockState> parseBlockTag(String blockTagStr, int index, String propertyKey, Identifier fileLocation, String packId) {
+		String[] parts = blockTagStr.substring(1).split(":");
+		Identifier tagId;
+		int startIndex;
+		try {
+			if (parts.length == 1 || parts[1].contains("=")) {
+				tagId = Identifier.withDefaultNamespace(parts[0]);
+				startIndex = 1;
+			} else {
+				tagId = Identifier.fromNamespaceAndPath(parts[0], parts[1]);
+				startIndex = 2;
+			}
+		} catch (IdentifierException e) {
+			ContinuityClient.LOGGER.warn("Invalid '" + propertyKey + "' element '" + blockTagStr + "' at index " + index + " in file '" + fileLocation + "' in pack '" + packId + "'", e);
+			return null;
+		}
+		TagKey<Block> tag = TagKey.create(Registries.BLOCK, tagId);
+
+		Object2ObjectOpenHashMap<String, ObjectOpenHashSet<String>> filters = new Object2ObjectOpenHashMap<>();
+		for (int j = startIndex; j < parts.length; j++) {
+			String part = parts[j];
+			if (!part.isEmpty()) {
+				String[] propertyParts = part.split("=", 2);
+				if (propertyParts.length == 2 && !propertyParts[1].isEmpty()) {
+					filters.computeIfAbsent(propertyParts[0], name -> new ObjectOpenHashSet<>()).addAll(Arrays.asList(propertyParts[1].split(",")));
+				} else {
+					ContinuityClient.LOGGER.warn("Invalid block property definition for tag '#" + tagId + "' in '" + propertyKey + "' element '" + blockTagStr + "' at index " + index + " in file '" + fileLocation + "' in pack '" + packId + "'");
+					return null;
+				}
+			}
+		}
+
+		BlockTagReferences.add(tag, filters, blockTagStr, index, propertyKey, fileLocation, packId);
+
+		if (filters.isEmpty()) {
+			return state -> state.is(tag);
+		}
+
+		Map<Block, Set<BlockState>> matchingStates = new ConcurrentHashMap<>();
+		return state -> state.is(tag) && matchingStates.computeIfAbsent(state.getBlock(), block -> {
+			ReferenceOpenHashSet<BlockState> states = new ReferenceOpenHashSet<>();
+			for (BlockState possibleState : block.getStateDefinition().getPossibleStates()) {
+				if (matchesFilters(possibleState, filters)) {
+					states.add(possibleState);
+				}
+			}
+			states.trim();
+			return states;
+		}).contains(state);
+	}
+
+	static boolean matchesFilters(BlockState state, Map<String, ObjectOpenHashSet<String>> filters) {
+		for (Map.Entry<String, ObjectOpenHashSet<String>> filter : filters.entrySet()) {
+			Property<?> property = state.getBlock().getStateDefinition().getProperty(filter.getKey());
+			if (property == null || !filter.getValue().contains(getValueName(state, property))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static <T extends Comparable<T>> String getValueName(BlockState state, Property<T> property) {
+		return property.getName(state.getValue(property));
 	}
 
 	@Nullable

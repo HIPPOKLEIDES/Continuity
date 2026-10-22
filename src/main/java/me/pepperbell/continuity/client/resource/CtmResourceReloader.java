@@ -8,6 +8,8 @@ import java.util.concurrent.Executor;
 
 import me.pepperbell.continuity.client.ContinuityClient;
 import me.pepperbell.continuity.client.model.QuadProcessors;
+import me.pepperbell.continuity.client.properties.BlockTagReferences;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.SpriteLoader;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
@@ -30,6 +32,7 @@ public class CtmResourceReloader implements PreparableReloadListener {
 
 	@Override
 	public CompletableFuture<Void> reload(SharedState currentReload, Executor prepareExecutor, PreparationBarrier preparationBarrier, Executor applyExecutor) {
+		BlockTagReferences.startReload();
 		ResourceManager resourceManager = currentReload.resourceManager();
 		CompletableFuture<Set<Identifier>> blockAtlasExtraIdsFuture = currentReload.get(BLOCK_ATLAS_EXTRA_IDS_FUTURE_KEY);
 		CompletableFuture<Boolean> wrapCtmFuture = currentReload.get(ModelWrappingHandler.WRAP_CTM_FUTURE_KEY);
@@ -64,5 +67,6 @@ public class CtmResourceReloader implements PreparableReloadListener {
 
 	private void apply(List<QuadProcessors.ProcessorHolder> processorHolders) {
 		QuadProcessors.reload(processorHolders);
+		BlockTagReferences.finishReload(Minecraft.getInstance().level != null);
 	}
 }

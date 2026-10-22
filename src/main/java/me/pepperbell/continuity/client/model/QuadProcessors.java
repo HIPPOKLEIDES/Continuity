@@ -51,6 +51,11 @@ public final class QuadProcessors {
 		CACHE.clear();
 	}
 
+	// Block predicates can reference block tags, so cached slices must be recomputed when tags change.
+	public static void clearCache() {
+		CACHE.clear();
+	}
+
 	public record ProcessorHolder(QuadProcessor processor, CachingPredicates predicates) {
 	}
 

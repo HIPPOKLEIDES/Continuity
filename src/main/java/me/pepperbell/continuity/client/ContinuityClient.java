@@ -8,6 +8,7 @@ import me.pepperbell.continuity.api.client.CtmLoader;
 import me.pepperbell.continuity.api.client.CtmLoaderRegistry;
 import me.pepperbell.continuity.api.client.CtmProperties;
 import me.pepperbell.continuity.api.client.QuadProcessor;
+import me.pepperbell.continuity.client.model.QuadProcessors;
 import me.pepperbell.continuity.client.processor.BaseCachingPredicates;
 import me.pepperbell.continuity.client.processor.CompactCtmQuadProcessor;
 import me.pepperbell.continuity.client.processor.ProcessingDataKeys;
@@ -24,6 +25,7 @@ import me.pepperbell.continuity.client.processor.simple.SimpleQuadProcessor;
 import me.pepperbell.continuity.client.processor.simple.VerticalHorizontalSpriteProvider;
 import me.pepperbell.continuity.client.processor.simple.VerticalSpriteProvider;
 import me.pepperbell.continuity.client.properties.BaseCtmProperties;
+import me.pepperbell.continuity.client.properties.BlockTagReferences;
 import me.pepperbell.continuity.client.properties.CompactConnectingCtmProperties;
 import me.pepperbell.continuity.client.properties.ConnectingCtmProperties;
 import me.pepperbell.continuity.client.properties.OrientedConnectingCtmProperties;
@@ -42,6 +44,7 @@ import me.pepperbell.continuity.client.util.RenderUtil;
 import me.pepperbell.continuity.client.util.biome.BiomeHolderManager;
 import me.pepperbell.continuity.impl.client.ProcessingDataKeyRegistryImpl;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.CommonLifecycleEvents;
 import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 import net.fabricmc.fabric.api.resource.v1.pack.PackActivationType;
 import net.fabricmc.fabric.api.resource.v1.reloader.ResourceReloaderKeys;
@@ -66,6 +69,11 @@ public class ContinuityClient implements ClientModInitializer {
 		resourceLoader.registerReloadListener(RenderUtil.ReloadListener.ID, RenderUtil.ReloadListener.INSTANCE);
 		resourceLoader.addListenerOrdering(ResourceReloaderKeys.Client.ATLAS, RenderUtil.ReloadListener.ID);
 		resourceLoader.registerReloadListener(CtmResourceReloader.ID, CtmResourceReloader.INSTANCE);
+
+		CommonLifecycleEvents.TAGS_LOADED.register((registries, client) -> {
+			QuadProcessors.clearCache();
+			BlockTagReferences.onTagsLoaded(registries);
+		});
 
 		FabricLoader.getInstance().getModContainer(ID).ifPresent(container -> {
 			ResourceLoader.registerBuiltinPack(asId("default"), container, Component.translatable("resourcePack.continuity.default.name"), PackActivationType.NORMAL);
