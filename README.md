@@ -1,6 +1,6 @@
 # Continuity Expanded
 
-Continuity Expanded is a fork of [Continuity](https://github.com/PepperCode1/Continuity) by PepperCode1, modified by HIPPOKLEIDES starting in July 2026. It replaces Continuity rather than adding to it: it keeps the `continuity` mod ID, so the two cannot be installed together. It is not affiliated with or supported by the original project, so please report problems [here](https://github.com/HIPPOKLEIDES/Continuity/issues) rather than to Continuity.
+Continuity Expanded is a fork of [Continuity](https://github.com/PepperCode1/Continuity) by PepperCode1, modified by HIPPOKLEIDES starting in July 2026, with contributions from WesterosContinuity as well. It replaces Continuity rather than adding to it: it keeps the `continuity` mod ID, so the two cannot be installed together. It is not affiliated with or supported by the original project, so please report problems [here](https://github.com/HIPPOKLEIDES/Continuity/issues) rather than to Continuity.
 
 Like Continuity, it is licensed under the [GNU Lesser General Public License v3.0](LICENSE). The full list of changes is in the [changelog](CHANGELOG.md).
 
