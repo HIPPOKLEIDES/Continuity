@@ -21,6 +21,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import me.pepperbell.continuity.api.client.CtmProperties;
 import me.pepperbell.continuity.client.ContinuityClient;
+import me.pepperbell.continuity.client.properties.overlay.OverlayPropertiesSection;
 import me.pepperbell.continuity.client.resource.ResourceRedirectHandler;
 import me.pepperbell.continuity.client.util.MathUtil;
 import me.pepperbell.continuity.client.util.biome.BiomeHolder;
@@ -574,7 +575,11 @@ public class BaseCtmProperties implements CtmProperties {
 	protected void parsePrioritize() {
 		String prioritizeStr = properties.getProperty("prioritize");
 		if (prioritizeStr == null) {
-			prioritized = matchTilesSet != null;
+			// Overlays just add quads, so the precedence of matchTile over matchBlock, which decides which
+			// texture replacement wins, doesnt matter for them. Sorting every overlay with the prioritized properties
+			// will keep a block-matched overlay ahead of texture replacements from the same or lower priority packs. Those
+			// would otherwise run first and move the quad to a later pass, where only tile-matched processors run.
+			prioritized = matchTilesSet != null || this instanceof OverlayPropertiesSection.Provider;
 			return;
 		}
 
