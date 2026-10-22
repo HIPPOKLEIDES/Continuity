@@ -45,7 +45,7 @@ dependencies {
 	// Fabric API
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-	implementation("com.terraformersmc:modmenu:${modmenu_version}") {
+	implementation("maven.modrinth:mOgUt4GM:3rsoV1bk") {
 		exclude group: 'net.fabricmc.fabric-api'
 	}
 
