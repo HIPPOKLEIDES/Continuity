@@ -23,6 +23,9 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.client.resources.model.geometry.QuadCollection;
 import net.minecraft.core.Direction;
+import net.minecraft.world.phys.shapes.BooleanOp;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 public final class QuadUtil {
 	public static void interpolate(MutableQuadView quad, TextureAtlasSprite oldSprite, TextureAtlasSprite newSprite) {
@@ -57,13 +60,27 @@ public final class QuadUtil {
 		}
 	}
 
-	public static void emitOverlayQuad(QuadEmitter emitter, Direction face, TextureAtlasSprite sprite, int color, ChunkSectionLayer chunkLayer, TriState ao) {
-		emitter.square(face, 0, 0, 1, 1, 0);
+	/**
+	 * Emits an overlay quad with the same geometry as the given base quad. The overlay sprite is mapped onto the block
+	 * face from the vertex positions, so it stays flush with faces of the block boundary (slab and
+	 * layer tops) and is clipped to faces that only cover part of the block face (slab sides, stair steps).
+	 */
+	public static void emitOverlayQuad(QuadEmitter emitter, QuadView quad, TextureAtlasSprite sprite, int color, ChunkSectionLayer chunkLayer, TriState ao) {
+		Direction face = quad.lightFace();
+		float minU = sprite.getU0();
+		float minV = sprite.getV0();
+		float uRange = sprite.getU1() - minU;
+		float vRange = sprite.getV1() - minV;
+		for (int i = 0; i < 4; i++) {
+			float x = quad.x(i);
+			float y = quad.y(i);
+			float z = quad.z(i);
+			emitter.pos(i, x, y, z);
+			emitter.uv(i, minU + getFaceU(face, x, z) * uRange, minV + getFaceV(face, y, z) * vRange);
+		}
+		emitter.cullFace(quad.cullFace());
+		emitter.nominalFace(face);
 		emitter.color(color, color, color, color);
-		emitter.uv(0, sprite.getU0(), sprite.getV0());
-		emitter.uv(1, sprite.getU0(), sprite.getV1());
-		emitter.uv(2, sprite.getU1(), sprite.getV1());
-		emitter.uv(3, sprite.getU1(), sprite.getV0());
 		emitter.atlas(QuadAtlas.BLOCK);
 		emitter.animated(sprite.contents().isAnimated());
 		emitter.chunkLayer(chunkLayer);
@@ -72,37 +89,121 @@ public final class QuadUtil {
 		emitter.emit();
 	}
 
-	public static boolean isQuadUnitSquare(QuadView quad) {
-		int indexA;
-		int indexB;
-		switch (quad.lightFace().getAxis()) {
-			case X:
-				indexA = 1;
-				indexB = 2;
-				break;
-			case Y:
-				indexA = 0;
-				indexB = 2;
-				break;
-			case Z:
-				indexA = 1;
-				indexB = 0;
-				break;
-			default:
-				return false;
-		}
+	// Horizontal texture coordinate of a point on the given face, in [0, 1] from the face's left edge. Uses the same
+	// layout as MutableQuadView#square, which matches the texture left/up directions in DirectionMaps.
+	private static float getFaceU(Direction face, float x, float z) {
+		return switch (face) {
+			case DOWN, UP, SOUTH -> x;
+			case NORTH -> 1 - x;
+			case WEST -> z;
+			case EAST -> 1 - z;
+		};
+	}
 
+	// Vertical texture coordinate of a point on the given face, in [0, 1] from the face's top edge.
+	private static float getFaceV(Direction face, float y, float z) {
+		return switch (face) {
+			case DOWN -> 1 - z;
+			case UP -> z;
+			default -> 1 - y;
+		};
+	}
+
+	/**
+	 * Returns whether the given quad lies in a plane perpendicular to its light face and within the block bounds, which
+	 * is required to project a block face texture onto it. The quad does not need to cover the whole face or lie on the
+	 * block boundary.
+	 */
+	public static boolean isQuadFlatInBlock(QuadView quad) {
+		int depthIndex = getAxisIndex(quad.lightFace().getAxis());
+		float depth = quad.posByIndex(0, depthIndex);
 		for (int i = 0; i < 4; i++) {
-			float a = quad.posByIndex(i, indexA);
-			if ((a >= 0.0001f || a <= -0.0001f) && (a >= 1.0001f || a <= 0.9999f)) {
-				return false;
+			for (int j = 0; j < 3; j++) {
+				float p = quad.posByIndex(i, j);
+				if (p <= -0.0001f || p >= 1.0001f) {
+					return false;
+				}
 			}
-			float b = quad.posByIndex(i, indexB);
-			if ((b >= 0.0001f || b <= -0.0001f) && (b >= 1.0001f || b <= 0.9999f)) {
+			float d = quad.posByIndex(i, depthIndex);
+			if (d >= depth + 0.0001f || d <= depth - 0.0001f) {
 				return false;
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * Returns whether the given quad lies on the block boundary in the direction of its light face, rather than being
+	 * inset like the top of a bottom slab. Only checks the first vertex, so the quad must already be known to be flat.
+	 */
+	public static boolean isQuadOnBlockBoundary(QuadView quad) {
+		Direction face = quad.lightFace();
+		float depth = quad.posByIndex(0, getAxisIndex(face.getAxis()));
+		float boundary = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : 0;
+		return depth < boundary + 0.0001f && depth > boundary - 0.0001f;
+	}
+
+	/**
+	 * Returns whether the shape of the neighbor in the given in-plane direction borders the whole edge of the given flat
+	 * quad on that side. The neighbor's shape must touch the edge either level with the quad (just behind its plane) or
+	 * rising from it (just in front of its plane), and the quad must reach that side of the block. The shape is in the
+	 * neighbor's block space, which only differs from the quad's along the direction's axis.
+	 */
+	public static boolean isQuadEdgeBorderedBy(QuadView quad, Direction dir, VoxelShape neighborShape) {
+		Direction face = quad.lightFace();
+		int depthIndex = getAxisIndex(face.getAxis());
+		int dirIndex = getAxisIndex(dir.getAxis());
+		int edgeIndex = 3 - depthIndex - dirIndex;
+
+		float dirMin = Float.POSITIVE_INFINITY;
+		float dirMax = Float.NEGATIVE_INFINITY;
+		float edgeMin = Float.POSITIVE_INFINITY;
+		float edgeMax = Float.NEGATIVE_INFINITY;
+		for (int i = 0; i < 4; i++) {
+			float d = quad.posByIndex(i, dirIndex);
+			dirMin = Math.min(dirMin, d);
+			dirMax = Math.max(dirMax, d);
+			float e = quad.posByIndex(i, edgeIndex);
+			edgeMin = Math.min(edgeMin, e);
+			edgeMax = Math.max(edgeMax, e);
+		}
+		boolean reachesSide = dir.getAxisDirection() == Direction.AxisDirection.POSITIVE ? dirMax > 0.9999f : dirMin < 0.0001f;
+		if (!reachesSide || edgeMax - edgeMin < 0.002f) {
+			return false;
+		}
+
+		VoxelShape side = neighborShape.getFaceShape(dir.getOpposite());
+		if (side.isEmpty()) {
+			return false;
+		}
+
+		// Keep the tested strips slightly away from the quad's plane and the edge's ends so that shape boundaries
+		// that line up with them exactly still count as touching.
+		double depth = quad.posByIndex(0, depthIndex);
+		double behind = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? -1 : 1;
+		return coversStrip(side, depthIndex, edgeIndex, edgeMin + 0.001, edgeMax - 0.001, depth + behind * 0.0001, depth + behind * 0.01)
+				|| coversStrip(side, depthIndex, edgeIndex, edgeMin + 0.001, edgeMax - 0.001, depth - behind * 0.0001, depth - behind * 0.01);
+	}
+
+	// Whether the shape covers the strip spanning the given range along the edge axis, the range between the given
+	// depths along the depth axis and the whole block along the remaining axis.
+	private static boolean coversStrip(VoxelShape shape, int depthIndex, int edgeIndex, double edgeMin, double edgeMax, double depthA, double depthB) {
+		double[] min = { 0, 0, 0 };
+		double[] max = { 1, 1, 1 };
+		min[depthIndex] = Math.min(depthA, depthB);
+		max[depthIndex] = Math.max(depthA, depthB);
+		min[edgeIndex] = edgeMin;
+		max[edgeIndex] = edgeMax;
+		VoxelShape strip = Shapes.box(min[0], min[1], min[2], max[0], max[1], max[2]);
+		return !Shapes.joinIsNotEmpty(strip, shape, BooleanOp.ONLY_FIRST);
+	}
+
+	private static int getAxisIndex(Direction.Axis axis) {
+		return switch (axis) {
+			case X -> 0;
+			case Y -> 1;
+			case Z -> 2;
+		};
 	}
 
 	/**

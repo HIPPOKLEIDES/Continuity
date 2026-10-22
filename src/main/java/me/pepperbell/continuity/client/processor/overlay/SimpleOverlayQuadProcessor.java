@@ -39,7 +39,7 @@ public class SimpleOverlayQuadProcessor extends SimpleQuadProcessor {
 		if (processingPredicate.shouldProcessQuad(quad, sprite, level, pos, appearanceState, state, context)) {
 			TextureAtlasSprite newSprite = spriteProvider.getSprite(quad, sprite, level, pos, appearanceState, state, random, context);
 			if (newSprite != null && !RenderUtil.isMissingSprite(newSprite)) {
-				QuadUtil.emitOverlayQuad(context.getExtraQuadEmitter(), quad.lightFace(), newSprite, RenderUtil.getTintColor(tintBlock, level, pos, tintIndex), layer, ao);
+				QuadUtil.emitOverlayQuad(context.getExtraQuadEmitter(), quad, newSprite, RenderUtil.getTintColor(tintBlock, level, pos, tintIndex), layer, ao);
 			}
 		}
 		return ProcessingResult.NEXT_PROCESSOR;

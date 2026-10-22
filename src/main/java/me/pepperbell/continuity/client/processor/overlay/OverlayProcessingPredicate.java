@@ -28,7 +28,7 @@ public class OverlayProcessingPredicate extends BaseProcessingPredicate {
 		if (!super.shouldProcessQuad(quad, sprite, level, pos, appearanceState, state, dataProvider)) {
 			return false;
 		}
-		return QuadUtil.isQuadUnitSquare(quad);
+		return QuadUtil.isQuadFlatInBlock(quad);
 	}
 
 	public static OverlayProcessingPredicate fromProperties(BaseCtmProperties properties) {
